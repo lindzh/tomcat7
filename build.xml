@@ -2678,6 +2678,7 @@ Apache Tomcat ${version} native binaries for Win64 AMD64/EMT64 platform.
     <mkdir dir="${tomcat-dbcp.home}"/>
     <!-- Rebuild dbcp only if built jars do not exist -->
     <!-- or new versions of pool or dbcp have been downloaded. -->
+    <!--
     <condition property="no.build.dbcp">
       <and>
         <uptodate srcfile="${commons-pool.home}" targetfile="${tomcat-dbcp.jar}" />
@@ -2686,8 +2687,9 @@ Apache Tomcat ${version} native binaries for Win64 AMD64/EMT64 platform.
         <uptodate srcfile="${commons-dbcp.home}" targetfile="${tomcat-dbcp-src.jar}" />
       </and>
     </condition>
+    
     <antcall target="build-tomcat-dbcp" />
-
+	-->
     <!-- Download JDT (Eclipse compiler) -->
     <antcall target="downloadfile-2">
       <param name="sourcefile.1" value="${jdt.loc.1}"/>
