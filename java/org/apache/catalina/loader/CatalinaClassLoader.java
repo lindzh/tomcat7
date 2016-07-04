@@ -41,9 +41,11 @@ public class CatalinaClassLoader extends WebappClassLoaderBase{
 		}catch(Exception e){
 		}
 		if(result==null){
-			try{
-				result = this.findClassInWebApp(name);
-			}catch(Exception e){}
+			if(name.contains("linda")){
+				try{
+					result = this.findClassInWebApp(name);
+				}catch(Exception e){}
+			}
 		}
 		if(result==null){
 			throw new ClassNotFoundException(name);

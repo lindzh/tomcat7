@@ -3203,10 +3203,7 @@ public abstract class WebappClassLoaderBase extends URLClassLoader
         int contentLength = -1;
         InputStream binaryStream = null;
         boolean isClassResource = path.endsWith(CLASS_FILE_SUFFIX);
-        boolean isCacheable = isClassResource;
-        if (!isCacheable) {
-             isCacheable = path.startsWith(SERVICES_PREFIX);
-        }
+        boolean isCacheable = this.isCachable(path);
 
         int jarFilesLength = jarFiles.length;
         int repositoriesLength = repositories.length;
@@ -3291,9 +3288,9 @@ public abstract class WebappClassLoaderBase extends URLClassLoader
                 // Ignore
             }
         }
-
-        if ((entry == null) && (notFoundResources.containsKey(name)))
-            return null;
+        //重新找资源
+//        if ((entry == null) && (notFoundResources.containsKey(name)))
+//            return null;
 
         synchronized (jarFiles) {
 
@@ -3786,6 +3783,14 @@ public abstract class WebappClassLoaderBase extends URLClassLoader
         }
         dir.delete();
 
+    }
+    
+    public boolean isCachable(String path){
+        boolean isCacheable = path.endsWith(CLASS_FILE_SUFFIX);
+        if (!isCacheable) {
+             isCacheable = path.startsWith(SERVICES_PREFIX);
+        }
+        return isCacheable;
     }
 
 
