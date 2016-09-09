@@ -4,34 +4,37 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.reflect.Constructor;
 import java.security.AccessController;
 import java.security.CodeSource;
 import java.security.PrivilegedAction;
 
-import org.apache.catalina.LifecycleException;
-/**
- * 
- * 
- * @author lindezhi
- * 2016年7月2日 上午11:26:56
- */
-public class CatalinaClassLoader extends WebappClassLoaderBase{
+public abstract class BasicClassLoader extends WebappClassLoaderBase {
 	
+
     private static final int EOF = -1;
     
     private static final int DEFAULT_BUFFER_SIZE = 1024 * 4;
 	
-    private static final org.apache.juli.logging.Log log = org.apache.juli.logging.LogFactory.getLog( CatalinaClassLoader.class );
+    private static final org.apache.juli.logging.Log log = org.apache.juli.logging.LogFactory.getLog( BasicClassLoader.class );
 	
-	private String signSuffix = ".classx";
-	
-	public CatalinaClassLoader(){
+	public BasicClassLoader(){
 		super();
 	}
 	
-	public CatalinaClassLoader(ClassLoader parent){
+	public BasicClassLoader(ClassLoader parent){
 		super(parent);
 	}
+	
+	protected abstract Class<? extends BasicClassLoader> getLoaderClass();
+	
+	protected abstract boolean isFind(String name);
+	
+	protected abstract byte[] encode(byte[] code);
+	
+	protected abstract byte[] decode(byte[] code);
+	
+	protected abstract String[] getSuffix();
 
 	@Override
 	public Class<?> findClass(String name) throws ClassNotFoundException {
@@ -41,7 +44,7 @@ public class CatalinaClassLoader extends WebappClassLoaderBase{
 		}catch(Exception e){
 		}
 		if(result==null){
-			if(name.contains("linda")){
+			if(this.isFind(name)){
 				try{
 					result = this.findClassInWebApp(name);
 				}catch(Exception e){}
@@ -53,14 +56,31 @@ public class CatalinaClassLoader extends WebappClassLoaderBase{
 		return result;
 	}
 	
+	private String toString(String[] arr){
+		StringBuilder sb = new StringBuilder();
+		for(String str:arr){
+			sb.append(str);
+			sb.append(",");
+		}
+		return sb.toString();
+	}
+	
 	private Class<?> findClassInWebApp(String name) throws ClassNotFoundException{
-		ResourceEntry entry = this.findClassResource(name, signSuffix);
-		if(entry==null||entry.source==null){
-			log.info("[LOADER] find class "+name+" "+signSuffix+" null");
+		boolean find = false;
+		ResourceEntry entry = null;
+		String[] suffix = this.getSuffix();
+		for(String signSuffix:suffix){
+			entry = this.findClassResource(name, signSuffix);
+			if(entry!=null&&entry.source!=null){
+				find = true;
+				break;
+			}
+		}
+		if(!find){
+			log.info("[LOADER] find class "+name+" "+this.toString(suffix)+" null");
 			throw new ClassNotFoundException(name);
 		}else{
-			log.info("[LOADER] find class:"+name+" with classx "+entry.source.toString());
-			
+			log.info("[LOADER] find class:"+name+" with "+this.toString(suffix)+" "+entry.source.toString());
 			try {
 				this.doDecode(entry);
 				return this.doDefindClass(name, entry);
@@ -79,7 +99,7 @@ public class CatalinaClassLoader extends WebappClassLoaderBase{
 			entry.binaryContent = bos.toByteArray();
 			bos.close();
 		}
-		entry.binaryContent = SimpleCodec.decode(entry.binaryContent);
+		entry.binaryContent = this.decode(entry.binaryContent);
 	}
 	
     public static long copyLarge(InputStream input, OutputStream output)
@@ -206,15 +226,19 @@ public class CatalinaClassLoader extends WebappClassLoaderBase{
         return clazz;
     }
 	
-	public CatalinaClassLoader copyWithoutTransformers() {
-		CatalinaClassLoader result = new CatalinaClassLoader(getParent());
-		super.copyStateWithoutTransformers(result);
-		try {
+	
+	
+	public BasicClassLoader copyWithoutTransformers() {
+		Class<? extends BasicClassLoader> loaderClass = this.getLoaderClass();
+		try{
+			Constructor<? extends BasicClassLoader> constructor = loaderClass.getConstructor(ClassLoader.class);
+			BasicClassLoader result = constructor.newInstance(getParent());
+			super.copyStateWithoutTransformers(result);
 			result.start();
-		} catch (LifecycleException e) {
+			return result;
+		}catch(Exception e){
 			throw new IllegalStateException(e);
 		}
-		return result;
 	}
 
 }

@@ -1,63 +1,169 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.apache.catalina.loader;
 
+import java.io.File;
+import java.lang.reflect.Constructor;
+import java.net.URL;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 import org.apache.catalina.LifecycleException;
-
-public class WebappClassLoader extends WebappClassLoaderBase {
+/**
+ * 
+ * 
+ * @author lindezhi
+ * 2016年7月2日 上午11:26:56
+ */
+public class WebappClassLoader extends AbstractWebappClassLoader{
+	
+    private static final org.apache.juli.logging.Log log = org.apache.juli.logging.LogFactory.getLog( WebappClassLoader.class );
     
-    public WebappClassLoader() {
-        super();
+    private AbstractWebappClassLoader loaderLink;
+    
+    ///data/gateway/tomcat7/catalina
+    public static final String baseDir;
+    
+    private AbstractWebappClassLoader last;
+    
+    private Map<String,Class> classMap = new ConcurrentHashMap<String,Class>();
+    
+    static{
+    	String catalinaHome = System.getProperty("catalina.home");
+    	baseDir = catalinaHome + File.separator + "catalina";
     }
+    
+	public WebappClassLoader(){
+		super();
+	}
+	
+	public WebappClassLoader(ClassLoader parent){
+		super(parent);
+	}
+	
+	@Override
+	public AbstractWebappClassLoader next() {
+		return null;
+	}
+	
+	@Override
+	public void setRootLoader(WebappClassLoader loader) {
+		
+	}
+	
+	@Override
+	public Class rootLoadClass(String name, boolean throwNotFound)
+			throws ClassNotFoundException {
+		Class<?> result = null;
+		result = classMap.get(name);
+		if (result != null) {
+			return result;
+		}
+		try {
+			result = super.findClass(name);
+		} catch (Exception e) {
+		}
+		if (result == null && !throwNotFound) {
+			try {
+				result = super.loadClass(name);
+			} catch (Exception e) {
 
+			}
+		}
+		if (result == null) {
+			try {
+				result = this.getClass().getClassLoader().loadClass(name);
+			} catch (Exception e) {
 
-    public WebappClassLoader(ClassLoader parent) {
-        super(parent);
-    }
+			}
+		}
+		if (result == null && name.startsWith("com.linda.koala.biz")) {
+			try {
+				if (last != null) {
+					result = last.findClass(name);
+				}
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
 
+		if (result != null) {
+//			log.info("[loader] WebappClassLoader root load class:" + name);
+			classMap.put(name, result);
+		}
+		if (throwNotFound && result == null) {
+			throw new ClassNotFoundException(name);
+		}
+		return result;
+	}
 
-    /**
-     * Returns a copy of this class loader without any class file
-     * transformers. This is a tool often used by Java Persistence API
-     * providers to inspect entity classes in the absence of any
-     * instrumentation, something that can't be guaranteed within the
-     * context of a {@link java.lang.instrument.ClassFileTransformer}'s
-     * {@link java.lang.instrument.ClassFileTransformer#transform(ClassLoader,
-     * String, Class, java.security.ProtectionDomain, byte[]) transform} method.
-     * <p>
-     * The returned class loader's resource cache will have been cleared
-     * so that classes already instrumented will not be retained or
-     * returned.
-     *
-     * @return the transformer-free copy of this class loader.
-     */
-    @Override
-    public WebappClassLoader copyWithoutTransformers() {
+	@Override
+	public Class<?> findClass(String name) throws ClassNotFoundException {
+		Class<?> result = null;
+		synchronized (classMap) {
+			result = this.rootLoadClass(name, false);
+			if(result==null){
+				try{
+					if(last!=null){
+						return last.findClass(name);
+					}
+				}catch(Exception e){
+					e.printStackTrace();
+				}
+			}
+			if(result==null){
+				throw new ClassNotFoundException(name);
+			}
+//			log.info("[loader] WebappClassLoader load class:"+name);
+			classMap.put(name, result);
+		}
+		return result;
+	}
+	
+	@Override
+	public void start() throws LifecycleException {
+		super.start();
+		try{
+			URL resource = WebappClassLoader.class.getResource("");
+//			log.info("[loader] base path:"+resource);
+			String loaderClassName = "org.apache.catalina.loader._ea.CatalinaClassLoader_ea60";
+			Class<?> loaderClass = this.getClass().getClassLoader().loadClass(loaderClassName);
+	        Class<?>[] argTypes = { ClassLoader.class };
+	        Object[] args = { this.getParent() };
+			Constructor<?> constructor = loaderClass.getConstructor(argTypes);
+			loaderLink = (AbstractWebappClassLoader)constructor.newInstance(args);
+			loaderLink.setRootLoader(this);
+			super.copyStateWithoutTransformers(loaderLink);
+			loaderLink.start();
+			
+			AbstractWebappClassLoader next = loaderLink;
+			while(next!=null){
+				last = next;
+				next = next.next();
+			}
+		}catch(Exception e){
+			
+		}
+	}
 
-        WebappClassLoader result = new WebappClassLoader(getParent());
+	@Override
+	public void stop() throws LifecycleException {
+		super.stop();
+	}
 
-        super.copyStateWithoutTransformers(result);
+	public WebappClassLoader copyWithoutTransformers() {
+		WebappClassLoader result = new WebappClassLoader(getParent());
+		super.copyStateWithoutTransformers(result);
+		try {
+			result.start();
+		} catch (LifecycleException e) {
+			throw new IllegalStateException(e);
+		}
+		return result;
+	}
 
-        try {
-            result.start();
-        } catch (LifecycleException e) {
-            throw new IllegalStateException(e);
-        }
+	@Override
+	public Class<?> loadClass(String name, boolean resolve)
+			throws ClassNotFoundException {
+		return this.rootLoadClass(name, true);
+	}
 
-        return result;
-    }
 }
